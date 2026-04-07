@@ -1,0 +1,48 @@
+{
+  "manifest_version": 3,
+  "name": "VK Dating AutoClicker",
+  "version": "2.0.5",
+  "description": "One-click autoclicker for vk.com/dating",
+  "permissions": [
+    "tabs",
+    "webNavigation"
+  ],
+  "host_permissions": [
+    "https://vk.com/dating*",
+    "https://vk.com/dating/*",
+    "https://*.pages-ac.vk-apps.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://vk.com/dating*",
+        "https://vk.com/dating/*",
+        "https://*.pages-ac.vk-apps.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "all_frames": true,
+      "run_at": "document_idle",
+      "world": "ISOLATED"
+    }
+  ],
+  "action": {
+    "default_title": "VK Dating AutoClicker",
+    "default_icon": {
+      "16": "icons/gray16.png",
+      "32": "icons/gray32.png",
+      "48": "icons/gray48.png",
+      "128": "icons/gray128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/color16.png",
+    "32": "icons/color32.png",
+    "48": "icons/color48.png",
+    "128": "icons/color128.png"
+  }
+}

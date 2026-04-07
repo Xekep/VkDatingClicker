@@ -1,0 +1,15 @@
+{
+  "name": "vk-dating-autoclicker-release",
+  "private": true,
+  "version": "2.0.5",
+  "description": "Release tooling for the VK Dating AutoClicker browser extension.",
+  "scripts": {
+    "pack": "node ./scripts/pack-release.cjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "crx3": "2.0.0"
+  }
+}

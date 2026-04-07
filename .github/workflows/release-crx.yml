@@ -1,0 +1,106 @@
+name: Release CRX
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to package, for example v2.0.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      CRX_PRIVATE_KEY: ${{ secrets.CRX_PRIVATE_KEY }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Resolve release metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            TAG="${{ inputs.tag }}"
+          fi
+
+          VERSION="$(node -p "require('./src/manifest.json').version")"
+
+          if [[ "${TAG}" != "v${VERSION}" ]]; then
+            echo "Tag ${TAG} does not match src/manifest.json version v${VERSION}" >&2
+            exit 1
+          fi
+
+          echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Write CRX signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${CRX_PRIVATE_KEY}" ]]; then
+            echo "Repository secret CRX_PRIVATE_KEY is not set." >&2
+            exit 1
+          fi
+
+          printf '%s\n' "${CRX_PRIVATE_KEY}" > "${RUNNER_TEMP}/extension.pem"
+          chmod 600 "${RUNNER_TEMP}/extension.pem"
+          echo "CRX_KEY_PATH=${RUNNER_TEMP}/extension.pem" >> "${GITHUB_ENV}"
+
+      - name: Pack extension
+        env:
+          RELEASE_TAG: ${{ steps.meta.outputs.tag }}
+          CRX_KEY_PATH: ${{ env.CRX_KEY_PATH }}
+        run: npm run pack
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.tag }}-artifacts
+          path: dist/*
+          if-no-files-found: error
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            echo "Release ${TAG} already exists."
+          elif [[ "${TAG}" == *-* ]]; then
+            gh release create "${TAG}" --verify-tag --generate-notes --prerelease
+          else
+            gh release create "${TAG}" --verify-tag --generate-notes
+          fi
+
+          gh release upload "${TAG}" dist/* --clobber
