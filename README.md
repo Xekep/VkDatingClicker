@@ -6,22 +6,7 @@
 
 ## Demo
 
-<p align="center">
-  <video
-    src="./vk-dating-autoclicker-demo.mp4"
-    controls
-    muted
-    playsinline
-    preload="metadata"
-    width="100%">
-  </video>
-</p>
-
-<p align="center">
-  <a href="./vk-dating-autoclicker-demo.mp4">Открыть demo.mp4 отдельно</a>
-</p>
-
-Если GitHub не отрисовал встроенный плеер, открой видео по ссылке выше.
+<video src="vk-dating-autoclicker-demo.mp4" width="100%" autoplay loop muted playsinline></video>
 
 ## Что делает
 
