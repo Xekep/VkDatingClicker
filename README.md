@@ -68,7 +68,7 @@ npm.cmd run pack
 Если нужно дополнительно проверить соответствие тега и версии:
 
 ```powershell
-$env:RELEASE_TAG = "v2.0.5"
+$env:RELEASE_TAG = "v1.0.0"
 ```
 
 Артефакты появятся в `dist/`.
@@ -91,7 +91,7 @@ Workflow [`release-crx.yml`](./.github/workflows/release-crx.yml):
 
 1. Подними версию в [`src/manifest.json`](./src/manifest.json).
 2. При необходимости выровняй версию в [`package.json`](./package.json).
-3. Создай тег вида `v2.0.5`.
+3. Создай тег вида `v1.0.0`.
 4. Запушь ветку и тег.
 5. Дождись завершения workflow и проверь assets релиза.
 

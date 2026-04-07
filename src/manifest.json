@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "VK Dating AutoClicker",
-  "version": "2.0.5",
+  "version": "1.0.0",
   "description": "One-click autoclicker for vk.com/dating",
   "permissions": [
     "tabs",
