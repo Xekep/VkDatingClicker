@@ -8,7 +8,7 @@
 
 <p align="center">
   <video
-    src="./vk-dating-autoclicker-demo.webm"
+    src="./vk-dating-autoclicker-demo.mp4"
     controls
     muted
     playsinline
@@ -18,7 +18,7 @@
 </p>
 
 <p align="center">
-  <a href="./vk-dating-autoclicker-demo.webm">Открыть demo.webm отдельно</a>
+  <a href="./vk-dating-autoclicker-demo.mp4">Открыть demo.mp4 отдельно</a>
 </p>
 
 Если GitHub не отрисовал встроенный плеер, открой видео по ссылке выше.
@@ -123,5 +123,5 @@ Workflow [`release-crx.yml`](./.github/workflows/release-crx.yml):
 │  └─ pack-release.cjs
 ├─ .github/workflows/
 │  └─ release-crx.yml
-└─ vk-dating-autoclicker-demo.webm
+└─ vk-dating-autoclicker-demo.mp4
 ```
