@@ -1,18 +1,41 @@
 # VK Dating AutoClicker
 
-Расширение для `vk.com/dating`, которое запускает автокликер по кнопке `like` одним нажатием на иконку.
+Расширение для `vk.com/dating`, которое запускает автокликер по кнопке `like` одним нажатием на иконку браузера.
 
-## Что умеет
+Работает внутри реального app iframe `pages-ac.vk-apps.com`, поэтому не ломается на экране, где кнопки отсутствуют в верхнем документе `vk.com/dating`.
+
+## Demo
+
+<p align="center">
+  <video
+    src="./vk-dating-autoclicker-demo.webm"
+    controls
+    muted
+    playsinline
+    preload="metadata"
+    width="100%">
+  </video>
+</p>
+
+<p align="center">
+  <a href="./vk-dating-autoclicker-demo.webm">Открыть demo.webm отдельно</a>
+</p>
+
+Если GitHub не отрисовал встроенный плеер, открой видео по ссылке выше.
+
+## Что делает
 
 - работает только на `https://vk.com/dating`
-- ищет реальную кнопку внутри app iframe `pages-ac.vk-apps.com`
 - включает и выключает кликер по клику на action-иконку
 - делает иконку недоступной, если пользователь не на карточке анкеты
 - показывает статус цветом: зеленый `running`, красный `stopped`, серый `unavailable`
-- выводит число подтвержденных лайков на badge и в overlay внутри анкеты
-- считает клик только после подтвержденного перехода на следующую анкету
+- считает только подтвержденные лайки, а не просто попытки `click()`
+- показывает число подтвержденных лайков на badge и в overlay внутри анкеты
+- прячет overlay-счетчик, если курсор попадает в его прямоугольник
 
-## Текущие параметры
+## Параметры
+
+Текущая версия: `1.0.0`
 
 - `reaction`: `like`
 - `minDelay`: `12`
@@ -23,27 +46,19 @@
 - `confirmTimeout`: `1600`
 - `maxClicks`: `Infinity`
 
-## Структура
+## Установка
 
-```text
-.
-├─ src/
-│  ├─ manifest.json
-│  ├─ background.js
-│  ├─ content.js
-│  └─ icons/
-├─ scripts/
-│  └─ pack-release.cjs
-└─ .github/workflows/
-   └─ release-crx.yml
-```
-
-## Локальный запуск
+### Load unpacked
 
 1. Открой `chrome://extensions/`.
 2. Включи developer mode.
 3. Нажми `Load unpacked`.
 4. Выбери папку [`src`](./src).
+
+### Из релизного архива
+
+- используй `.zip` или `.crx` из GitHub Releases
+- для локальной ручной установки практичнее `src/` или `.zip`, потому что обычный Chrome не всегда любит сторонние `.crx` вне Chrome Web Store
 
 ## Локальная сборка
 
@@ -85,7 +100,7 @@ Workflow [`release-crx.yml`](./.github/workflows/release-crx.yml):
 
 Нужный secret:
 
-- `CRX_PRIVATE_KEY`: содержимое PEM-ключа целиком
+- `CRX_PRIVATE_KEY`: содержимое PEM-ключа целиком, с реальными переносами строк
 
 Релизный процесс:
 
@@ -95,10 +110,18 @@ Workflow [`release-crx.yml`](./.github/workflows/release-crx.yml):
 4. Запушь ветку и тег.
 5. Дождись завершения workflow и проверь assets релиза.
 
-## Ограничение CRX
+## Структура
 
-GitHub Actions может собрать корректный `.crx`, но обычный Chrome не всегда разрешает прямую установку сторонних `.crx`, не пришедших из Chrome Web Store. Поэтому практический fallback такой:
-
-- `src/` для developer mode
-- `zip` как переносимый артефакт
-- `crx` как подписанный релизный артефакт со стабильным extension id
+```text
+.
+├─ src/
+│  ├─ manifest.json
+│  ├─ background.js
+│  ├─ content.js
+│  └─ icons/
+├─ scripts/
+│  └─ pack-release.cjs
+├─ .github/workflows/
+│  └─ release-crx.yml
+└─ vk-dating-autoclicker-demo.webm
+```
