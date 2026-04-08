@@ -2,8 +2,6 @@
 
 Расширение для `vk.com/dating`, которое запускает автокликер по кнопке `like` одним нажатием на иконку браузера.
 
-Работает внутри реального app iframe `pages-ac.vk-apps.com`, поэтому не ломается на экране, где кнопки отсутствуют в верхнем документе `vk.com/dating`.
-
 ## Demo
 
 <video src="https://github.com/user-attachments/assets/d0a8b376-1196-43cf-8c8c-7d1e4c9fea5b" width="100%" autoplay loop muted playsinline></video>
@@ -33,18 +31,6 @@
 
 ## Установка
 
-### Load unpacked
-
-1. Открой `chrome://extensions/`.
-2. Включи developer mode.
-3. Нажми `Load unpacked`.
-4. Выбери папку [`src`](./src).
-
-### Из релизного архива
-
-- используй `.zip` или `.crx` из GitHub Releases
-- для локальной ручной установки практичнее `src/` или `.zip`, потому что обычный Chrome не всегда любит сторонние `.crx` вне Chrome Web Store
-
 ## Локальная сборка
 
 Требования:
@@ -65,12 +51,6 @@ $env:CRX_KEY_PATH = "$PWD\\privatekey.pem"
 npm.cmd run pack
 ```
 
-Если нужно дополнительно проверить соответствие тега и версии:
-
-```powershell
-$env:RELEASE_TAG = "v1.0.0"
-```
-
 Артефакты появятся в `dist/`.
 
 ## GitHub Actions Release
@@ -83,30 +63,6 @@ Workflow [`release-crx.yml`](./.github/workflows/release-crx.yml):
 - создает или обновляет GitHub Release
 - загружает артефакты в релиз
 
-Нужный secret:
+Secret:
 
-- `CRX_PRIVATE_KEY`: содержимое PEM-ключа целиком, с реальными переносами строк
-
-Релизный процесс:
-
-1. Подними версию в [`src/manifest.json`](./src/manifest.json).
-2. При необходимости выровняй версию в [`package.json`](./package.json).
-3. Создай тег вида `v1.0.0`.
-4. Запушь ветку и тег.
-5. Дождись завершения workflow и проверь assets релиза.
-
-## Структура
-
-```text
-.
-├─ src/
-│  ├─ manifest.json
-│  ├─ background.js
-│  ├─ content.js
-│  └─ icons/
-├─ scripts/
-│  └─ pack-release.cjs
-├─ .github/workflows/
-│  └─ release-crx.yml
-└─ vk-dating-autoclicker-demo.mp4
-```
+- `CRX_PRIVATE_KEY`: содержимое PEM-ключа
