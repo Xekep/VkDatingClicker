@@ -6,7 +6,7 @@
 
 ## Demo
 
-<video src="vk-dating-autoclicker-demo.mp4" width="100%" autoplay loop muted playsinline></video>
+<video src="https://github.com/user-attachments/assets/d0a8b376-1196-43cf-8c8c-7d1e4c9fea5b" width="100%" autoplay loop muted playsinline></video>
 
 ## Что делает
 
