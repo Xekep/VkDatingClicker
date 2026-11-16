@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to package, for example v1.0.0.0"
+        description: "Release tag to create or reuse, for example v1.0.0.0"
         required: true
         type: string
 
@@ -28,7 +28,29 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+          ref: ${{ github.ref }}
+
+      - name: Resolve release source
+        id: source
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            TAG="${INPUT_TAG}"
+          fi
+          git check-ref-format "refs/tags/${TAG}"
+          if [[ "${TAG}" != v* ]]; then
+            echo "Release tag must start with v." >&2
+            exit 1
+          fi
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]] && git show-ref --verify --quiet "refs/tags/${TAG}"; then
+            git checkout --detach "refs/tags/${TAG}"
+          fi
+          echo "tag=${TAG}" >> "${GITHUB_OUTPUT}"
+          echo "sha=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -39,15 +61,11 @@ jobs:
 
       - name: Resolve release metadata
         id: meta
+        env:
+          TAG: ${{ steps.source.outputs.tag }}
         shell: bash
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF_NAME}"
-
-          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            TAG="${{ inputs.tag }}"
-          fi
-
           VERSION="$(node -p "require('./src/manifest.json').version")"
 
           if [[ "${TAG}" != "v${VERSION}" ]]; then
@@ -90,6 +108,24 @@ jobs:
           name: ${{ steps.meta.outputs.tag }}-artifacts
           path: dist/*
           if-no-files-found: error
+
+      - name: Create or verify release tag
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git show-ref --verify --quiet "refs/tags/${TAG}"; then
+            TAG_SHA="$(git rev-parse "refs/tags/${TAG}^{commit}")"
+            if [[ "${TAG_SHA}" != "${SOURCE_SHA}" ]]; then
+              echo "Existing tag ${TAG} points to a different commit." >&2
+              exit 1
+            fi
+          else
+            git tag "${TAG}" "${SOURCE_SHA}"
+          fi
+          git push origin "refs/tags/${TAG}:refs/tags/${TAG}"
 
       - name: Create or update GitHub Release
         env:
