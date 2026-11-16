@@ -1,0 +1,10 @@
+body { width: 320px; margin: 0; padding: 18px; font: 14px/1.5 "Segoe UI", Arial, sans-serif; color: #18212b; background: #fff; }
+h1 { margin: 0; font-size: 18px; }
+p { margin: 12px 0; }
+#version { margin-top: 2px; color: #657080; font-size: 12px; }
+#status { font-weight: 600; }
+#details { white-space: pre-line; }
+button { width: 100%; margin-top: 8px; padding: 10px 12px; border: 1px solid #ccd3dd; border-radius: 8px; background: #f1f4f8; color: inherit; cursor: pointer; font: inherit; }
+#toggle { color: #fff; background: #087bf5; border-color: #087bf5; }
+button:disabled { opacity: .6; cursor: wait; }
+button:focus-visible { outline: 2px solid #087bf5; outline-offset: 3px; }

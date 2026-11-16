@@ -1,10 +1,24 @@
 (() => {
-  const APP_FRAME_RE = /^https:\/\/[a-z0-9-]+\.pages-ac\.vk-apps\.com\//i;
+  const APP_HOST_RE = /^[a-z0-9-]+\.(?:pages-ac\.vk-apps\.com|pages\.vk-apps\.ru)$/i;
   const FRAME_STATUS = "VK_DATING_AUTOCLICKER_STATUS";
   const FRAME_TOGGLE = "VK_DATING_AUTOCLICKER_TOGGLE";
+  const FRAME_STOP = "VK_DATING_AUTOCLICKER_STOP";
+  const FRAME_AUTHORIZE = "VK_DATING_AUTOCLICKER_AUTHORIZE";
   const STATE_EVENT = "VK_DATING_AUTOCLICKER_STATE";
 
-  if (!APP_FRAME_RE.test(window.location.href)) {
+  function isDatingFrame(url) {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== "https:" || !APP_HOST_RE.test(parsed.hostname)) return false;
+      const appId = parsed.searchParams.get("vk_app_id");
+      return appId !== null ? appId === "7058363" :
+        /(?:^|-)app7058363(?:-|\.)/i.test(parsed.hostname);
+    } catch {
+      return false;
+    }
+  }
+
+  if (!isDatingFrame(window.location.href)) {
     return;
   }
 
@@ -16,14 +30,16 @@
 
   const config = {
     reaction: "like",
-    minDelay: 12,
-    maxDelay: 24,
-    retryDelayMin: 90,
-    retryDelayMax: 140,
-    confirmMinDelay: 120,
+    minDelay: 0,
+    maxDelay: 8,
+    retryDelayMin: 60,
+    retryDelayMax: 100,
+    confirmMinDelay: 60,
+    confirmStableDelay: 60,
     confirmTimeout: 1600,
+    maxFailures: 3,
     maxClicks: Infinity,
-    debug: true
+    debug: false
   };
 
   const state = {
@@ -34,26 +50,27 @@
     statusTimer: null,
     waitingDelay: false,
     buttonFound: false,
+    eligible: false,
+    reason: "button_missing",
     missingSince: 0,
     pendingClick: false,
+    pendingAcrossSkip: false,
+    pendingSkip: null,
+    skipSince: 0,
+    skipSignature: "",
+    skipFailures: 0,
+    skipRetryAt: 0,
     pendingSince: 0,
     pendingSignature: "",
-    lastConfirmedSignature: "",
+    candidateSignature: "",
+    candidateSince: 0,
+    failures: 0,
+    authorizing: false,
+    generation: 0,
     panelHiddenByCursor: false,
     panel: null,
     panelText: null
   };
-
-  const STATIC_TEXT = new Set([
-    "Анкеты",
-    "Лайки",
-    "Чаты",
-    "Профиль",
-    "Личное",
-    "Поделиться",
-    "Пожаловаться",
-    "Включить управление с клавиатуры"
-  ]);
 
   function log(...args) {
     if (config.debug) {
@@ -66,7 +83,44 @@
   }
 
   function getButton() {
-    return document.querySelector(`[data-reaction="${config.reaction}"]`);
+    return Array.from(document.querySelectorAll(`[data-reaction="${config.reaction}"]`))
+      .find(isUsableControl) ?? null;
+  }
+
+  function getSkipButton() {
+    return Array.from(document.querySelectorAll("button#common-skip, .vkuiPlaceholder__action button"))
+      .find((button) => /^(?:Пропустить|Не сейчас|Продолжить)$/i.test(
+        (button.textContent || "").replace(/\s+/g, " ").trim()
+      ) && isUsableControl(button)) ?? null;
+  }
+
+  function getSkipSignature(button) {
+    const prompt = button.closest(".vkuiPlaceholder__host") || button.parentElement || button;
+    return (prompt.textContent || "").replace(/\s+/g, " ").trim();
+  }
+
+  function isUsableControl(button) {
+    if (!getVisibleRect(button) || button.matches(":disabled") ||
+        button.closest('[inert], [aria-disabled="true"], [aria-hidden="true"]')) {
+      return false;
+    }
+    // These inherited properties can be overridden by a child. Checking
+    // every ancestor rejects controls that are actually clickable.
+    const buttonStyle = getComputedStyle(button);
+    if (buttonStyle.visibility !== "visible" || buttonStyle.pointerEvents === "none") {
+      return false;
+    }
+    for (let element = button; element; element = element.parentElement) {
+      const style = getComputedStyle(element);
+      if (style.display === "none" || Number(style.opacity) === 0) {
+        return false;
+      }
+    }
+    const rect = button.getBoundingClientRect();
+    const x = (Math.max(0, rect.left) + Math.min(window.innerWidth, rect.right)) / 2;
+    const y = (Math.max(0, rect.top) + Math.min(window.innerHeight, rect.bottom)) / 2;
+    const hit = document.elementFromPoint(x, y);
+    return hit === button || button.contains(hit);
   }
 
   function ensurePanel() {
@@ -164,7 +218,9 @@
       running: state.active,
       clicks: state.clicks,
       reaction: config.reaction,
-      buttonFound: state.buttonFound
+      buttonFound: state.buttonFound,
+      eligible: state.eligible,
+      reason: state.reason
     };
   }
 
@@ -208,7 +264,16 @@
   }
 
   function getProfileImages() {
-    return Array.from(document.images)
+    const button = getButton();
+    if (!button) return [];
+    // The deck keeps the next profile in the DOM. Find the photo belonging
+    // to the usable reaction controls instead of inspecting the whole page.
+    let images = [];
+    for (let root = button.parentElement; root && root !== document.body; root = root.parentElement) {
+      images = Array.from(root.querySelectorAll("img"));
+      if (images.length) break;
+    }
+    return images
       .map((image) => {
         const rect = getVisibleRect(image);
         if (!rect || rect.width < 120 || rect.height < 120) {
@@ -235,37 +300,43 @@
       .map((image) => image.source);
   }
 
-  function getProfileTextLines() {
-    const lines = (document.body.innerText || "")
+  function getProfilePrimary() {
+    const primaryPattern = /^[^,\d\r\n]{1,60},\s*\d{1,2}$/u;
+    // In the current markup the name is a div and the age a sibling span.
+    // Their parent textContent joins them without innerText's block breaks.
+    for (const span of document.querySelectorAll("span")) {
+      if (!/^,\s*\d{1,2}$/.test((span.textContent || "").trim())) continue;
+      const parent = span.parentElement;
+      if (!parent || !getVisibleRect(parent)) continue;
+      const text = (parent.textContent || "").replace(/\s+/g, " ").trim();
+      if (primaryPattern.test(text)) return text;
+    }
+    return (document.body.innerText || "")
       .replace(/\u00A0/g, " ")
+      .replace(/\s*\n\s*(?=,\s*\d{1,2}(?:\s|$))/g, "")
       .split(/\n+/)
       .map((line) => line.trim())
-      .filter(Boolean)
-      .filter((line) => !STATIC_TEXT.has(line))
-      .filter((line) => line.length <= 80)
-      .filter((line) => !/^\d+$/.test(line));
-    const primary = lines.find((line) => /,\s*\d{1,2}\b/.test(line)) || "";
-    const distance = lines.find((line) => /\b\d+\s*км\b/i.test(line)) || "";
-    const details = lines
-      .filter((line) => line !== primary && line !== distance)
-      .filter((line) => line.length >= 3)
-      .slice(0, 4);
-
-    return [primary, distance, ...details].filter(Boolean);
+      .find((line) => primaryPattern.test(line)) || "";
   }
 
   function getCardSignature() {
     const images = getProfileImages();
-    const lines = getProfileTextLines();
-
-    if (!images.length && !lines.length) {
+    const primary = getProfilePrimary();
+    // A notification or a carousel change is not a new profile. Fail closed
+    // when the page does not expose enough information to identify a card.
+    if (!images.length || !primary) {
       return "";
     }
+    return JSON.stringify({ primary, image: images[0] });
+  }
 
-    return JSON.stringify({
-      images,
-      lines
-    });
+  function isNewProfile(signature, previous) {
+    if (!signature || !previous) {
+      return false;
+    }
+    const next = JSON.parse(signature);
+    const before = JSON.parse(previous);
+    return next.primary !== before.primary && next.image !== before.image;
   }
 
   function scheduleUnlock(minDelay = config.minDelay, maxDelay = config.maxDelay) {
@@ -277,20 +348,28 @@
 
   function beginClickAttempt(signature) {
     state.pendingClick = true;
+    state.pendingAcrossSkip = false;
     state.pendingSince = performance.now();
     state.pendingSignature = signature;
+    state.candidateSignature = "";
+    state.candidateSince = 0;
     state.waitingDelay = true;
     updatePanel();
   }
 
-  function finishConfirmedClick(signature) {
+  function finishClickAttempt(confirmed) {
     state.pendingClick = false;
+    state.pendingAcrossSkip = false;
     state.pendingSince = 0;
     state.pendingSignature = "";
-    state.lastConfirmedSignature = signature || state.lastConfirmedSignature;
-    state.clicks += 1;
-
-    log(`Confirmed click #${state.clicks} (${config.reaction})`);
+    state.candidateSignature = "";
+    if (confirmed) {
+      state.failures = 0;
+      state.clicks += 1;
+      log(`Confirmed profile transition #${state.clicks} (${config.reaction})`);
+    } else {
+      log("Same profile restored after skip; resuming without counting a like");
+    }
     emitState();
     updatePanel();
     scheduleUnlock();
@@ -298,23 +377,32 @@
 
   function failClickAttempt() {
     state.pendingClick = false;
+    state.pendingAcrossSkip = false;
     state.pendingSince = 0;
     state.pendingSignature = "";
-
-    log("Click was not confirmed, retrying");
+    state.candidateSignature = "";
+    state.failures += 1;
+    if (state.failures >= config.maxFailures) {
+      log("Confirmation failure limit reached");
+      stop();
+      return;
+    }
+    log("Profile transition was not confirmed, retrying");
     updatePanel();
     scheduleUnlock(config.retryDelayMin, config.retryDelayMax);
   }
 
   function refreshStatus() {
     const previous = state.buttonFound;
-    const signature = getCardSignature();
-    state.buttonFound = Boolean(getButton());
-    if (signature && !state.pendingClick) {
-      state.lastConfirmedSignature = signature;
-    }
+    const previouslyEligible = state.eligible;
+    const previousReason = state.reason;
+    const skip = getSkipButton();
+    state.buttonFound = Boolean(skip || getButton());
+    state.eligible = Boolean(skip) || (state.buttonFound && Boolean(getCardSignature()));
+    state.reason = state.eligible ? "" : state.buttonFound ? "profile_unrecognized" :
+      document.querySelectorAll(`[data-reaction="${config.reaction}"]`).length ? "button_unavailable" : "button_missing";
     updatePanel();
-    return previous !== state.buttonFound;
+    return previous !== state.buttonFound || previouslyEligible !== state.eligible || previousReason !== state.reason;
   }
 
   function ensureStatusTimer() {
@@ -330,6 +418,8 @@
   }
 
   function stopLoop() {
+    state.generation += 1;
+    state.authorizing = false;
     if (state.timer) {
       cancelAnimationFrame(state.timer);
       state.timer = null;
@@ -339,8 +429,15 @@
     state.waitingDelay = false;
     state.missingSince = 0;
     state.pendingClick = false;
+    state.pendingAcrossSkip = false;
+    state.pendingSkip = null;
+    state.skipSince = 0;
+    state.skipSignature = "";
+    state.skipFailures = 0;
+    state.skipRetryAt = 0;
     state.pendingSince = 0;
     state.pendingSignature = "";
+    state.candidateSignature = "";
     refreshStatus();
   }
 
@@ -358,32 +455,88 @@
       return;
     }
 
+    const skip = getSkipButton();
+    if (skip) {
+      state.missingSince = 0;
+      if (refreshStatus()) emitState();
+      // A prompt is not a new profile. Preserve any pending like and wait for
+      // the next actual profile after the prompt has been dismissed.
+      if (state.pendingClick) {
+        state.pendingSince = performance.now();
+        state.candidateSignature = "";
+      }
+      // React can reuse the same skip button for consecutive suggestions.
+      // A replacement control or changed prompt text means the prior skip worked.
+      if (state.pendingSkip && (state.pendingSkip !== skip || state.skipSignature !== getSkipSignature(skip))) {
+        state.pendingSkip = null;
+        state.skipFailures = 0;
+        state.skipRetryAt = performance.now() + rand(config.minDelay, config.maxDelay);
+      }
+      if (state.pendingSkip) {
+        if (performance.now() - state.skipSince >= config.confirmTimeout) {
+          state.pendingSkip = null;
+          state.skipFailures += 1;
+          if (state.skipFailures >= config.maxFailures) {
+            log("Skip failure limit reached");
+            stop();
+            return;
+          }
+          state.skipRetryAt = performance.now() + rand(config.retryDelayMin, config.retryDelayMax);
+        }
+      } else if (!state.authorizing && performance.now() >= state.skipRetryAt) {
+        requestClick("skip");
+      }
+      state.timer = requestAnimationFrame(loop);
+      return;
+    }
+    if (state.pendingSkip || state.skipFailures) {
+      state.pendingSkip = null;
+      state.skipSignature = "";
+      state.skipFailures = 0;
+      state.skipRetryAt = 0;
+      if (!state.pendingClick) {
+        clearDelayTimer();
+        state.waitingDelay = false;
+      }
+    }
+
     const button = getButton();
     const signature = getCardSignature();
-    state.buttonFound = Boolean(button);
-    if (signature && !state.pendingClick) {
-      state.lastConfirmedSignature = signature;
+    const eligible = Boolean(button && signature);
+    if (state.buttonFound !== Boolean(button) || state.eligible !== eligible) {
+      state.buttonFound = Boolean(button);
+      state.eligible = eligible;
+      emitState();
     }
     updatePanel();
 
     if (state.pendingClick) {
       const elapsed = performance.now() - state.pendingSince;
 
-      if (
-        elapsed >= config.confirmMinDelay &&
-        signature &&
-        signature !== state.pendingSignature
-      ) {
-        finishConfirmedClick(signature);
+      const newProfile = isNewProfile(signature, state.pendingSignature);
+      // Dismissing a prompt can restore the same profile. In that case the
+      // old click cannot be confirmed, but it must not block the next attempt
+      // for confirmTimeout. Use the same stability window as a new profile.
+      if (button && signature && (newProfile || state.pendingAcrossSkip)) {
+        if (state.candidateSignature !== signature) {
+          state.candidateSignature = signature;
+          state.candidateSince = performance.now();
+        }
+      } else {
+        state.candidateSignature = "";
+      }
+      if (state.candidateSignature && elapsed >= config.confirmMinDelay &&
+          performance.now() - state.candidateSince >= config.confirmStableDelay) {
+        finishClickAttempt(newProfile);
       } else if (elapsed >= config.confirmTimeout) {
         failClickAttempt();
       }
-
+      if (!state.active) return;
       state.timer = requestAnimationFrame(loop);
       return;
     }
 
-    if (!button) {
+    if (!button || !signature) {
       if (!state.missingSince) {
         state.missingSince = performance.now();
       }
@@ -402,13 +555,45 @@
 
     state.missingSince = 0;
 
-    if (button && !state.waitingDelay) {
-      beginClickAttempt(signature || state.lastConfirmedSignature);
-      button.click();
-      log("Click attempt fired");
+    if (!state.waitingDelay && !state.authorizing) {
+      requestClick("like");
     }
 
     state.timer = requestAnimationFrame(loop);
+  }
+
+  function requestClick(kind) {
+    // Recheck the top-level URL before every click, including skip buttons.
+    state.authorizing = true;
+    const generation = state.generation;
+    chrome.runtime.sendMessage({ type: FRAME_AUTHORIZE }, (response) => {
+      const failed = chrome.runtime.lastError;
+      if (generation !== state.generation || !state.active) return;
+      state.authorizing = false;
+      if (failed || !response?.allowed) {
+        stop();
+        return;
+      }
+      const skip = getSkipButton();
+      if (kind === "skip") {
+        if (!skip) return;
+        if (state.pendingClick) state.pendingAcrossSkip = true;
+        state.pendingSkip = skip;
+        state.skipSince = performance.now();
+        state.skipSignature = getSkipSignature(skip);
+        skip.click();
+        log("Prompt skip fired");
+        return;
+      }
+      // The prompt may have appeared while authorization was in flight.
+      if (skip) return;
+      const currentButton = getButton();
+      const currentSignature = getCardSignature();
+      if (!currentButton || !currentSignature) return;
+      beginClickAttempt(currentSignature);
+      currentButton.click();
+      log("Click attempt fired");
+    });
   }
 
   function start() {
@@ -417,9 +602,11 @@
       return status();
     }
 
+    refreshStatus();
+    if (!state.eligible) return status();
+    state.failures = 0;
     state.active = true;
     log("Starting...");
-    refreshStatus();
     emitState();
     loop();
     return status();
@@ -453,6 +640,10 @@
   };
 
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message?.type === FRAME_STOP) {
+      sendResponse(state.active ? stop() : status());
+      return false;
+    }
     if (message?.type === FRAME_TOGGLE) {
       sendResponse(toggle());
       return false;

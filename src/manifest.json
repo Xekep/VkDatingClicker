@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "VK Dating AutoClicker",
-  "version": "1.0.0",
-  "description": "One-click autoclicker for vk.com/dating",
+  "version": "1.0.0.0",
+  "description": "One-click autoclicker for VK Dating on vk.com and vk.ru",
   "permissions": [
     "tabs",
     "webNavigation"
@@ -10,7 +10,10 @@
   "host_permissions": [
     "https://vk.com/dating*",
     "https://vk.com/dating/*",
-    "https://*.pages-ac.vk-apps.com/*"
+    "https://vk.ru/dating*",
+    "https://vk.ru/dating/*",
+    "https://*.pages-ac.vk-apps.com/*",
+    "https://*.pages.vk-apps.ru/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -20,7 +23,10 @@
       "matches": [
         "https://vk.com/dating*",
         "https://vk.com/dating/*",
-        "https://*.pages-ac.vk-apps.com/*"
+        "https://vk.ru/dating*",
+        "https://vk.ru/dating/*",
+        "https://*.pages-ac.vk-apps.com/*",
+        "https://*.pages.vk-apps.ru/*"
       ],
       "js": [
         "content.js"

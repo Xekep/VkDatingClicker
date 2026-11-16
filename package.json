@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "description": "Release tooling for the VK Dating AutoClicker browser extension.",
   "scripts": {
+    "test": "node --test",
     "pack": "node ./scripts/pack-release.cjs"
   },
   "engines": {
